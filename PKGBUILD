@@ -12,7 +12,7 @@ source=("git+https://github.com/Jareda15/WattHog.git")
 md5sums=('SKIP')
 
 package() {
-    cd "${srcdir}/watthog"
+    cd "${srcdir}/Watthog"
 
     # Install Python files
     install -d "${pkgdir}/opt/watthog"
