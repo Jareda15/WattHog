@@ -4,11 +4,11 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc="A TUI utility for monitoring system power consumption on Linux"
 arch=('any')
-url="https://github.com/TBD/watthog"
+url="https://github.com/Jareda15/WattHog"
 license=('GPL3')
 depends=('python' 'python-textual' 'python-psutil')
 makedepends=('git')
-source=("git+https://github.com/TBD/watthog.git")
+source=("git+https://github.com/Jareda15/WattHog.git")
 md5sums=('SKIP')
 
 package() {
