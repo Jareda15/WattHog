@@ -20,7 +20,7 @@ package() {
 
     # Install Udev rule
     install -d "${pkgdir}/usr/lib/udev/rules.d"
-    echo 'ACTION=="add", SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", ATTR{energy_uj}="0444"' > "${pkgdir}/usr/lib/udev/rules.d/99-watthog-rapl.rules"
+    echo 'ACTION=="add", SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chmod 444 /sys/class/powercap/%k/energy_uj"' > "${pkgdir}/usr/lib/udev/rules.d/99-watthog-rapl.rules"
 
     # Install .desktop file
     install -d "${pkgdir}/usr/share/applications"

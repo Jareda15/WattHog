@@ -22,7 +22,7 @@ echo "1) Vytvářím udev pravidlo pro přístup k RAPL (intel-rapl) bez sudo...
 
 cat << 'EOF' > "$RULE_FILE"
 # WattHog: Allow users to read Intel RAPL energy counters
-ACTION=="add", SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", ATTR{energy_uj}="0444"
+ACTION=="add", SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chmod 444 /sys/class/powercap/%k/energy_uj"
 EOF
 
 echo "Načítám nová udev pravidla..."
