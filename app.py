@@ -26,6 +26,7 @@ from backend import (
     get_power_source,
     get_top_processes,
     find_rapl_domains,
+    setup_logging,
 )
 
 
@@ -311,7 +312,10 @@ def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="WattHog TUI Application")
     parser.add_argument("--demo", action="store_true", help="Use simulated data")
+    parser.add_argument("--debug", action="store_true", help="Enable verbose hardware trace logging")
     args = parser.parse_args()
+
+    setup_logging(args.debug)
 
     app = WattHogApp(demo=args.demo)
     app.run()

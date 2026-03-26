@@ -7,6 +7,7 @@ Handles power source detection (Battery or RAPL) and process power impact scorin
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import subprocess
 import time
@@ -16,6 +17,22 @@ from pathlib import Path
 from typing import Optional
 
 import psutil
+
+logger = logging.getLogger("watthog")
+
+def setup_logging(debug: bool) -> None:
+    """Configures WattHog trace logging. Active only if debug is True."""
+    if debug:
+        log_file = Path.home() / ".local" / "state" / "watthog" / "watthog.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(
+            filename=str(log_file),
+            level=logging.DEBUG,
+            format="%(asctime)s [%(levelname)s] %(message)s"
+        )
+        logger.debug("--- WattHog Debug Session Started ---")
+    else:
+        logger.addHandler(logging.NullHandler())
 
 
 WEIGHT_CPU = 1.0
@@ -97,14 +114,16 @@ class RaplInfo:
 def _read_sysfs_int(path: Path) -> Optional[int]:
     try:
         return int(path.read_text().strip())
-    except (FileNotFoundError, ValueError, PermissionError):
+    except (FileNotFoundError, ValueError, PermissionError) as e:
+        logger.debug(f"_read_sysfs_int failed for {path}: {e}")
         return None
 
 
 def _read_sysfs_str(path: Path) -> Optional[str]:
     try:
         return path.read_text().strip()
-    except (FileNotFoundError, PermissionError):
+    except (FileNotFoundError, PermissionError) as e:
+        logger.debug(f"_read_sysfs_str failed for {path}: {e}")
         return None
 
 
@@ -140,6 +159,7 @@ def read_battery(bat_path: Path) -> Optional[BatteryInfo]:
         voltage_now = _read_sysfs_int(bat_path / "voltage_now")
 
         if charge_now is None or charge_full is None or voltage_now is None:
+            logger.debug(f"read_battery({bat_path}) failed to read charge parameters.")
             return None
 
         voltage_v = voltage_now / 1_000_000
@@ -204,15 +224,18 @@ def read_rapl_power(rapl_path: Path, interval: float = 1.0) -> Optional[RaplInfo
     try:
         e0 = int(energy_uj_path.read_text().strip())
     except PermissionError:
+        logger.debug(f"RAPL Missing permission for {energy_uj_path}")
         return RaplInfo(domain=domain_name, power_watts=0.0, has_permission=False)
-    except (FileNotFoundError, ValueError):
+    except (FileNotFoundError, ValueError) as e:
+        logger.debug(f"RAPL Error reading initial {energy_uj_path}: {e}")
         return None
 
     time.sleep(interval)
 
     try:
         e1 = int(energy_uj_path.read_text().strip())
-    except (PermissionError, FileNotFoundError, ValueError):
+    except (PermissionError, FileNotFoundError, ValueError) as e:
+        logger.debug(f"RAPL Error reading final {energy_uj_path}: {e}")
         return None
 
     max_energy = _read_sysfs_int(rapl_path / "max_energy_range_uj")
@@ -220,6 +243,7 @@ def read_rapl_power(rapl_path: Path, interval: float = 1.0) -> Optional[RaplInfo
     if delta < 0 and max_energy is not None:
         delta += max_energy
     elif delta < 0:
+        logger.debug(f"RAPL negative delta ({delta}) without known max_energy_range_uj")
         return None
 
     power_w = delta / 1_000_000 / interval
@@ -257,8 +281,8 @@ def get_amd_gpu_power() -> Optional[GpuInfo]:
                 power_uw = int(power_path.read_text().strip())
                 name = name_path.read_text().strip() if name_path.exists() else "AMD GPU"
                 return GpuInfo(name=name, power_watts=power_uw / 1_000_000)
-            except (ValueError, PermissionError):
-                pass
+            except (ValueError, PermissionError) as e:
+                logger.debug(f"AMD GPU Error reading {power_path}: {e}")
     return None
 
 def get_nvidia_gpu_power() -> Optional[GpuInfo]:
@@ -274,8 +298,8 @@ def get_nvidia_gpu_power() -> Optional[GpuInfo]:
                 name = parts[0]
                 power = float(parts[1])
                 return GpuInfo(name=name, power_watts=power)
-    except (FileNotFoundError, subprocess.CalledProcessError, ValueError):
-        pass
+    except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as e:
+        logger.debug(f"Nvidia GPU Error parsing nvidia-smi: {e}")
     return None
 
 def get_gpu_info() -> Optional[GpuInfo]:
@@ -342,7 +366,8 @@ def get_top_processes(n: int = 20) -> list[ProcessScore]:
                 "io_write_0": io_write_0,
             }
             procs.append(proc)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            logger.debug(f"psutil snapshot setup pass failed for PID {proc.pid if hasattr(proc, 'pid') else 'unknown'}: {e}")
             continue
 
     time.sleep(1.0)
@@ -385,7 +410,8 @@ def get_top_processes(n: int = 20) -> list[ProcessScore]:
                 io_write_bytes=io_write_delta,
                 power_score=score,
             ))
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            logger.debug(f"psutil delta calculation pass failed for PID {proc.pid if hasattr(proc, 'pid') else 'unknown'}: {e}")
             continue
 
     results.sort(key=lambda p: p.power_score, reverse=True)
@@ -395,8 +421,11 @@ def get_top_processes(n: int = 20) -> list[ProcessScore]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="WattHog Backend test utility.")
     parser.add_argument("--demo", action="store_true", help="Use simulated data")
+    parser.add_argument("--debug", action="store_true", help="Enable verbose hardware trace logging")
     parser.add_argument("-n", "--top", type=int, default=5, help="Number of processes")
     args = parser.parse_args()
+
+    setup_logging(args.debug)
 
     print("======================================================================")
     print("  🐗 WattHog - Backend PoC")
